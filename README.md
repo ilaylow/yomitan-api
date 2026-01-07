@@ -1,4 +1,4 @@
-Lightweight Web API for Yomitan using Fastify & SQLite.
+Lightweight Web API for [Yomitan](https://github.com/yomidevs/yomitan) using Fastify & SQLite.
 
 Current only exposes findTerms from Translator API.
 
