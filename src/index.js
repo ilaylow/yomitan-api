@@ -30,17 +30,17 @@ const fastify = Fastify({
 await fastify.register(cors);
 
 // Health check route
-fastify.get("/", async (request, reply) => {
+fastify.get("/yomitan", async (request, reply) => {
   return { status: "ok" };
 });
 
 // List dictionaries
-fastify.get("/api/dictionaries", async (request, reply) => {
+fastify.get("/yomitan/api/dictionaries", async (request, reply) => {
   const dictionaries = db.prepare("SELECT * FROM dictionaries").all();
   return { dictionaries };
 });
 
-fastify.get("/api/term/raw/:term", async (request, reply) => {
+fastify.get("/yomitan/api/term/raw/:term", async (request, reply) => {
   const { term } = /** @type {{ term: string }} */ (request.params);
 
   const result = await translator.findTerms("simple", term, {
@@ -61,11 +61,11 @@ fastify.get("/api/term/raw/:term", async (request, reply) => {
   return result;
 });
 
-fastify.get("/api/term/simple/:term", async (request, reply) => {
+fastify.get("/yomitan/api/term/simple/:term", async (request, reply) => {
   const { term } = /** @type {{ term: string }} */ (request.params);
 
   const result = await translator.findTerms("simple", term, {
-    matchType: "prefix",
+    matchType: "exact",
     deinflect: true,
     primaryReading: "",
     mainDictionary: "Jitendex.org [2026-01-04]",
