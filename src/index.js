@@ -54,7 +54,7 @@ fastify.get("/yomitan/api/term/raw/:term", async (request, reply) => {
     textReplacements: [null],
     enabledDictionaryMap,
     excludeDictionaryDefinitions: null,
-    searchResolution: "word",
+    searchResolution: "letter",
     language: "ja",
   });
 
