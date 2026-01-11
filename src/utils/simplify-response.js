@@ -1,6 +1,6 @@
 /**
  * Simplifies the verbose Yomitan dictionary response into a cleaner format
- * @param {object} response - The raw response from translator.findTerms()
+ * @param {{dictionaryEntries: import('dictionary').TermDictionaryEntry[], originalTextLength: number}} response - The raw response from translator.findTerms()
  * @returns {object} Simplified response
  */
 export function simplifyResponse(response) {
