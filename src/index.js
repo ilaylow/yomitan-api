@@ -138,7 +138,7 @@ fastify.get("/yomitan/api/term/simple/:term", async (request, reply) => {
   // First find if there is an exact match for the term, otherwise break it down by tokenization.
   const result = await translator.findTerms("simple", term, searchTermOptions);
   if (result.dictionaryEntries.length !== 0) {
-    return result;
+    return simplifyResponse(result);
   }
 
   // Split into kanji/non-kanji segments, then tokenize kanji segments
