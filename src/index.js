@@ -144,6 +144,8 @@ fastify.get("/yomitan/api/term/simple/:term", async (request, reply) => {
     return [segment];
   });
 
+  termsToLookup.unshift(term);
+
   for (const lookupTerm of termsToLookup) {
     const result = await translator.findTerms("simple", lookupTerm, {
       matchType: "exact",
