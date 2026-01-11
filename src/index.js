@@ -27,6 +27,54 @@ const fastify = Fastify({
   logger: true,
 });
 
+/**
+ * Check if a character is kanji
+ * @param {string} char
+ * @returns {boolean}
+ */
+function isKanji(char) {
+  const code = char.charCodeAt(0);
+  return code >= 0x4e00 && code <= 0x9faf;
+}
+
+/**
+ * Check if a string contains kanji characters
+ * @param {string} text
+ * @returns {boolean}
+ */
+function containsKanji(text) {
+  return /[\u4e00-\u9faf]/.test(text);
+}
+
+/**
+ * Split text into segments of consecutive kanji and non-kanji characters
+ * @param {string} text
+ * @returns {string[]}
+ */
+function splitByKanji(text) {
+  if (!text) return [];
+
+  const segments = [];
+  let currentSegment = text[0];
+  let currentIsKanji = isKanji(text[0]);
+
+  for (let i = 1; i < text.length; i++) {
+    const char = text[i];
+    const charIsKanji = isKanji(char);
+
+    if (charIsKanji === currentIsKanji) {
+      currentSegment += char;
+    } else {
+      segments.push(currentSegment);
+      currentSegment = char;
+      currentIsKanji = charIsKanji;
+    }
+  }
+
+  segments.push(currentSegment);
+  return segments;
+}
+
 async function initKuromoji() {
   return new Promise((resolve, reject) => {
     kuromoji
@@ -81,19 +129,23 @@ fastify.get("/yomitan/api/term/raw/:term", async (request, reply) => {
 });
 
 fastify.get("/yomitan/api/term/simple/:term", async (request, reply) => {
-  let resultsArr = [];
-
+  const resultsArr = [];
   const { term } = /** @type {{ term: string }} */ (request.params);
 
-  /** @type kuromoji.IpadicFeatures[] */
-  const tokens = tokenizer.tokenize(term);
-
-  for (const token of tokens) {
-    if (token.word_type === "UNKNOWN") {
-      continue;
+  // Split into kanji/non-kanji segments, then tokenize kanji segments
+  const segments = splitByKanji(term);
+  const termsToLookup = segments.flatMap((segment) => {
+    if (containsKanji(segment)) {
+      return tokenizer
+        .tokenize(segment)
+        .filter((t) => t.word_type !== "UNKNOWN")
+        .map((t) => t.surface_form);
     }
+    return [segment];
+  });
 
-    const result = await translator.findTerms("simple", token.surface_form, {
+  for (const lookupTerm of termsToLookup) {
+    const result = await translator.findTerms("simple", lookupTerm, {
       matchType: "exact",
       deinflect: true,
       primaryReading: "",
@@ -109,9 +161,7 @@ fastify.get("/yomitan/api/term/simple/:term", async (request, reply) => {
     });
 
     const simplifiedResult = simplifyResponse(result);
-
     const { results } = /** @type {{ results: object[] }} */ (simplifiedResult);
-
     resultsArr.push(...results);
   }
 
