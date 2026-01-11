@@ -23,6 +23,22 @@ const enabledDictionaryMap = new Map([
   ],
 ]);
 
+/** @type {import('translation').FindTermsOptions} */
+const searchTermOptions = {
+  matchType: "exact",
+  deinflect: true,
+  primaryReading: "",
+  mainDictionary: "Jitendex.org [2026-01-04]",
+  sortFrequencyDictionary: null,
+  sortFrequencyDictionaryOrder: "descending",
+  removeNonJapaneseCharacters: false,
+  textReplacements: [null],
+  enabledDictionaryMap,
+  excludeDictionaryDefinitions: null,
+  searchResolution: "word",
+  language: "ja",
+};
+
 const fastify = Fastify({
   logger: true,
 });
@@ -110,20 +126,7 @@ fastify.get("/yomitan/api/dictionaries", async (request, reply) => {
 fastify.get("/yomitan/api/term/raw/:term", async (request, reply) => {
   const { term } = /** @type {{ term: string }} */ (request.params);
 
-  const result = await translator.findTerms("simple", term, {
-    matchType: "prefix",
-    deinflect: true,
-    primaryReading: "",
-    mainDictionary: "Jitendex.org [2026-01-04]",
-    sortFrequencyDictionary: null,
-    sortFrequencyDictionaryOrder: "descending",
-    removeNonJapaneseCharacters: false,
-    textReplacements: [null],
-    enabledDictionaryMap,
-    excludeDictionaryDefinitions: null,
-    searchResolution: "word",
-    language: "ja",
-  });
+  const result = await translator.findTerms("simple", term, searchTermOptions);
 
   return result;
 });
@@ -131,6 +134,12 @@ fastify.get("/yomitan/api/term/raw/:term", async (request, reply) => {
 fastify.get("/yomitan/api/term/simple/:term", async (request, reply) => {
   const resultsArr = [];
   const { term } = /** @type {{ term: string }} */ (request.params);
+
+  // First find if there is an exact match for the term, otherwise break it down by tokenization.
+  const result = await translator.findTerms("simple", term, searchTermOptions);
+  if (result.dictionaryEntries.length !== 0) {
+    return result;
+  }
 
   // Split into kanji/non-kanji segments, then tokenize kanji segments
   const segments = splitByKanji(term);
@@ -144,23 +153,12 @@ fastify.get("/yomitan/api/term/simple/:term", async (request, reply) => {
     return [segment];
   });
 
-  termsToLookup.unshift(term);
-
   for (const lookupTerm of termsToLookup) {
-    const result = await translator.findTerms("simple", lookupTerm, {
-      matchType: "exact",
-      deinflect: true,
-      primaryReading: "",
-      mainDictionary: "Jitendex.org [2026-01-04]",
-      sortFrequencyDictionary: null,
-      sortFrequencyDictionaryOrder: "descending",
-      removeNonJapaneseCharacters: false,
-      textReplacements: [null],
-      enabledDictionaryMap,
-      excludeDictionaryDefinitions: null,
-      searchResolution: "word",
-      language: "ja",
-    });
+    const result = await translator.findTerms(
+      "simple",
+      lookupTerm,
+      searchTermOptions,
+    );
 
     const simplifiedResult = simplifyResponse(result);
     const { results } = /** @type {{ results: object[] }} */ (simplifiedResult);
