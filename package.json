@@ -15,7 +15,9 @@
     "@zip.js/zip.js": "^2.7.34",
     "better-sqlite3": "^12.5.0",
     "fastify": "^5.6.2",
+    "google-auth-library": "^10.6.1",
     "hangul-js": "^0.2.6",
+    "jsonwebtoken": "^9.0.3",
     "kanji-processor": "^1.0.2"
   },
   "devDependencies": {

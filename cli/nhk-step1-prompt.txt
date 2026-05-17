@@ -1,0 +1,22 @@
+NHK Deck Generator — Step 1: Generate terms file.
+
+1. Use WebFetch to fetch https://www3.nhk.or.jp/news/ and find links to popular/recent news articles.
+2. Pick one article from the top stories. Use WebFetch to fetch the full article page.
+3. Read the article text and identify approximately 30 interesting, complex, or uncommon Japanese words/phrases from it. Prefer words with kanji, compound words, domain-specific vocabulary, and words a Japanese learner would benefit from studying. Skip extremely common words (する、いる、ある、なる、こと、もの、etc).
+4. For each word, try to look it up by running a SINGLE bash command that curls all terms at once, like:
+   for term in 語彙 政策 ...; do curl -s "http://localhost:3000/yomitan/api/term/simple/$term"; echo "---"; done
+   Parse the results to extract term, reading, dictionary, and glossary.
+5. If the API is not running or a lookup fails for a word, use your own knowledge to provide the reading and English glossary. Set dictionary to "Claude" for these.
+6. Write the results to ~/yomitan-api/data/nhk-pending.json in this format:
+{
+  "deckName": "NHK-YYYY-MM-DD",
+  "articleTitle": "the article title",
+  "articleUrl": "the url",
+  "words": [
+    { "term": "漢字", "reading": "かんじ", "dictionary": "Jitendex.org [2026-01-04]", "glossary": ["kanji", "Chinese character"] }
+  ]
+}
+
+IMPORTANT: Be efficient with tool calls. Batch curl requests into a single Bash call. Write the output file as soon as you have the data — do not delay. Today's date for the deck name is $(date +%Y-%m-%d).
+
+7. Print a summary of what you found.

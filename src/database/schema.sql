@@ -115,3 +115,76 @@ CREATE TABLE IF NOT EXISTS media (
 );
 
 CREATE INDEX IF NOT EXISTS idx_media_dictionary_path ON media(dictionary, path);
+
+-- Saved words (per-user vocabulary list)
+CREATE TABLE IF NOT EXISTS saved_words (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_email TEXT NOT NULL,
+    term TEXT NOT NULL,
+    reading TEXT NOT NULL,
+    dictionary TEXT NOT NULL,
+    glossary TEXT NOT NULL,  -- JSON: array of gloss strings
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_words_user_term ON saved_words(user_email, term);
+CREATE INDEX IF NOT EXISTS idx_saved_words_user ON saved_words(user_email);
+
+-- Decks (date-based collections of saved words)
+CREATE TABLE IF NOT EXISTS decks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_email TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_decks_user_name ON decks(user_email, name);
+CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_email);
+
+-- Junction table: which words belong to which decks
+CREATE TABLE IF NOT EXISTS deck_words (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    word_id INTEGER NOT NULL REFERENCES saved_words(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_deck_words ON deck_words(deck_id, word_id);
+CREATE INDEX IF NOT EXISTS idx_deck_words_word ON deck_words(word_id);
+
+-- Tags (user-created labels for decks)
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_email TEXT NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#e94560',
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_user_name ON tags(user_email, name);
+CREATE INDEX IF NOT EXISTS idx_tags_user ON tags(user_email);
+
+-- Junction table: which tags belong to which decks
+CREATE TABLE IF NOT EXISTS deck_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_deck_tags ON deck_tags(deck_id, tag_id);
+CREATE INDEX IF NOT EXISTS idx_deck_tags_tag ON deck_tags(tag_id);
+
+-- Quiz scores (per-deck quiz attempt results)
+CREATE TABLE IF NOT EXISTS quiz_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_email TEXT NOT NULL,
+    deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    reading_score INTEGER NOT NULL,
+    meaning_score INTEGER NOT NULL,
+    total INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_scores_user ON quiz_scores(user_email);
+CREATE INDEX IF NOT EXISTS idx_quiz_scores_deck ON quiz_scores(user_email, deck_id);

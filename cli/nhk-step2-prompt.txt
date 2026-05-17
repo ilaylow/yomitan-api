@@ -1,0 +1,15 @@
+NHK Deck Generator — Step 2: Insert terms into database.
+
+1. Read the file ~/yomitan-api/data/nhk-pending.json. If it doesn't exist or is empty, stop and say "No pending NHK terms to import."
+2. For each term, concatenate them into a list and using SQL filter words out that appear in past decks.
+3. Using the data from that file, run sqlite3 commands against ~/yomitan-api/data/app.db to:
+   a. Create a deck: INSERT INTO decks (user_email, name) VALUES ('chuenleylow@gmail.com', '{deckName}') ON CONFLICT(user_email, name) DO NOTHING;
+   b. Get the deck id: SELECT id FROM decks WHERE user_email = 'chuenleylow@gmail.com' AND name = '{deckName}';
+   c. For each word, insert into saved_words: INSERT INTO saved_words (user_email, term, reading, dictionary, glossary) VALUES ('chuenleylow@gmail.com', '{term}', '{reading}', '{dictionary}', '{glossary as JSON array string}') ON CONFLICT(user_email, term) DO NOTHING;
+   d. Get each word's id and link it to the deck: INSERT INTO deck_words (deck_id, word_id) VALUES ({deckId}, {wordId}) ON CONFLICT(deck_id, word_id) DO NOTHING;
+   e. Create the NHK tag if it doesn't exist: INSERT INTO tags (user_email, name, color) VALUES ('chuenleylow@gmail.com', 'NHK', '#e74c3c') ON CONFLICT(user_email, name) DO NOTHING;
+   f. Tag the deck: get the tag id, then INSERT INTO deck_tags (deck_id, tag_id) VALUES ({deckId}, {tagId}) ON CONFLICT(deck_id, tag_id) DO NOTHING;
+4. After successful import, delete ~/yomitan-api/data/nhk-pending.json so it doesn't get re-imported.
+5. Print a summary of how many words were inserted and the deck name.
+
+IMPORTANT: Be careful with SQL quoting — use single quotes and escape any single quotes in Japanese text by doubling them. Run each SQL statement via: sqlite3 ~/yomitan-api/data/app.db "SQL HERE"
