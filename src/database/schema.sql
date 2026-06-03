@@ -188,3 +188,33 @@ CREATE TABLE IF NOT EXISTS quiz_scores (
 
 CREATE INDEX IF NOT EXISTS idx_quiz_scores_user ON quiz_scores(user_email);
 CREATE INDEX IF NOT EXISTS idx_quiz_scores_deck ON quiz_scores(user_email, deck_id);
+
+-- Users (role + identity). Membership still gated by ALLOWED_EMAILS in code.
+CREATE TABLE IF NOT EXISTS users (
+    email TEXT PRIMARY KEY,
+    role TEXT NOT NULL CHECK (role IN ('student','teacher')),
+    display_name TEXT,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- Teacher↔student link. UNIQUE on student enforces "one teacher per student".
+CREATE TABLE IF NOT EXISTS teacher_students (
+    teacher_email TEXT NOT NULL REFERENCES users(email),
+    student_email TEXT NOT NULL REFERENCES users(email),
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (teacher_email, student_email)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_teacher_students_student ON teacher_students(student_email);
+
+-- Read-only deck access grants. Deck.user_email remains the sole owner/mutator.
+CREATE TABLE IF NOT EXISTS deck_assignments (
+    deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    user_email TEXT NOT NULL REFERENCES users(email),
+    access_type TEXT NOT NULL CHECK (access_type IN ('assigned','shared')),
+    granted_by TEXT NOT NULL REFERENCES users(email),
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (deck_id, user_email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deck_assignments_user ON deck_assignments(user_email);
