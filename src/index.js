@@ -17,6 +17,7 @@ const ALLOWED_EMAILS = [
     "yeetuskeetus1611@gmail.com",
     "leonmayuaki@gmail.com",
     "invictarocks@gmail.com",
+    "danandrews866@gmail.com"
 ];
 const JWT_SECRET = process.env.JWT_SECRET || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
@@ -549,7 +550,7 @@ fastify.get(
           JOIN deck_tags dt ON dt.deck_id = v.id AND dt.tag_id = ?
           LEFT JOIN deck_words dw ON dw.deck_id = v.id
          GROUP BY v.id
-         ORDER BY v.name DESC`;
+         ORDER BY v.created_at DESC`;
             countQuery = `${visibility}
         SELECT COUNT(DISTINCT v.id) AS total
           FROM visible v
@@ -562,7 +563,7 @@ fastify.get(
           FROM visible v
           LEFT JOIN deck_words dw ON dw.deck_id = v.id
          GROUP BY v.id
-         ORDER BY v.name DESC`;
+         ORDER BY v.created_at DESC`;
             countQuery = `${visibility}
         SELECT COUNT(*) AS total FROM visible v`;
             params = [user.email, user.email];
@@ -813,7 +814,11 @@ fastify.get(
     },
 );
 
-/** Get which decks a word (by term) belongs to */
+/** Get which decks (visible to the caller) contain a word with this term.
+ *  Visibility = owned by caller OR assigned to caller. Term match is on the
+ *  saved_words row referenced by deck_words; it doesn't matter who owns that
+ *  saved_words row, so assigned decks where the teacher owns the underlying
+ *  saved_words still match. */
 fastify.get(
     "/yomitan/api/words/:term/decks",
     { preHandler: verifyAuth },
@@ -823,13 +828,20 @@ fastify.get(
         const decks = /** @type {any[]} */ (
             db
                 .prepare(
-                    `SELECT d.id, d.name FROM decks d
-         JOIN deck_words dw ON dw.deck_id = d.id
-         JOIN saved_words sw ON sw.id = dw.word_id
-         WHERE sw.user_email = ? AND sw.term = ?
-         ORDER BY d.name DESC`,
+                    `WITH visible AS (
+             SELECT id FROM decks WHERE user_email = ?
+             UNION
+             SELECT deck_id AS id FROM deck_assignments WHERE user_email = ?
+           )
+           SELECT DISTINCT d.id, d.name
+             FROM decks d
+             JOIN visible v ON v.id = d.id
+             JOIN deck_words dw ON dw.deck_id = d.id
+             JOIN saved_words sw ON sw.id = dw.word_id
+            WHERE INSTR(sw.term, ?) > 0 OR INSTR(sw.reading, ?) > 0
+            ORDER BY d.created_at DESC`,
                 )
-                .all(user.email, term)
+                .all(user.email, user.email, term, term)
         );
         return { decks };
     },
@@ -958,7 +970,7 @@ fastify.post(
     "/yomitan/api/quiz/scores",
     { preHandler: verifyAuth },
     async (request, reply) => {
-        const { deckId, readingScore, meaningScore, total } =
+        const { deckId, readingScore, meaningScore, total, wordResults } =
             /** @type {any} */ (request.body) ?? {};
         if (
             deckId == null ||
@@ -974,16 +986,52 @@ fastify.post(
         if (!access) {
             return reply.code(404).send({ error: "Deck not found" });
         }
-        db.prepare(
-            `INSERT INTO quiz_scores (user_email, deck_id, reading_score, meaning_score, total)
-       VALUES (?, ?, ?, ?, ?)`,
-        ).run(
-            user.email,
-            Number(deckId),
-            Number(readingScore),
-            Number(meaningScore),
-            Number(total),
-        );
+
+        // Persist the aggregate score (append-only) and the per-word results
+        // (latest-only via UPSERT). Wrapped in a transaction so partial writes
+        // can't leave the two tables out of sync.
+        const writeAttempt = db.transaction(() => {
+            db.prepare(
+                `INSERT INTO quiz_scores (user_email, deck_id, reading_score, meaning_score, total)
+                 VALUES (?, ?, ?, ?, ?)`,
+            ).run(
+                user.email,
+                Number(deckId),
+                Number(readingScore),
+                Number(meaningScore),
+                Number(total),
+            );
+
+            if (Array.isArray(wordResults) && wordResults.length > 0) {
+                // Clear previous attempt's results for this (student, deck) so a
+                // shorter follow-up attempt doesn't leave stale rows from words
+                // that are no longer in the deck.
+                db.prepare(
+                    `DELETE FROM quiz_word_results WHERE user_email = ? AND deck_id = ?`,
+                ).run(user.email, Number(deckId));
+
+                const upsert = db.prepare(
+                    `INSERT INTO quiz_word_results
+                        (user_email, deck_id, word_id, reading_correct, meaning_correct, attempted_at)
+                     VALUES (?, ?, ?, ?, ?, unixepoch())
+                     ON CONFLICT(user_email, deck_id, word_id) DO UPDATE SET
+                        reading_correct = excluded.reading_correct,
+                        meaning_correct = excluded.meaning_correct,
+                        attempted_at    = excluded.attempted_at`,
+                );
+                for (const r of wordResults) {
+                    if (r?.wordId == null) continue;
+                    upsert.run(
+                        user.email,
+                        Number(deckId),
+                        Number(r.wordId),
+                        r.readingCorrect ? 1 : 0,
+                        r.meaningCorrect ? 1 : 0,
+                    );
+                }
+            }
+        });
+        writeAttempt();
 
         // Email the teacher iff: access is a teacher→student assignment (not peer 'shared')
         // AND owner is a teacher linked to caller.
@@ -1226,6 +1274,48 @@ fastify.get(
     },
 );
 
+/** Per-word right/wrong from the student's latest attempt of this deck.
+ *  Returns one row per word in the deck. Words the student has never
+ *  attempted come back with reading_correct/meaning_correct === null. */
+fastify.get(
+    "/yomitan/api/teacher/students/:email/decks/:id/word-results",
+    { preHandler: verifyAuth },
+    async (request, reply) => {
+        if (!requireTeacher(request, reply)) return;
+        const user = /** @type {any} */ (request).user;
+        const studentEmail = /** @type {string} */ (request.params.email);
+        const deckId = Number(/** @type {any} */ (request.params).id);
+        const link = db
+            .prepare(
+                "SELECT 1 FROM teacher_students WHERE teacher_email = ? AND student_email = ?",
+            )
+            .get(user.email, studentEmail);
+        if (!link) return reply.code(403).send({ error: "Not your student" });
+
+        const rows = /** @type {any[]} */ (
+            db
+                .prepare(
+                    `SELECT sw.id AS word_id, sw.term, sw.reading, sw.dictionary, sw.glossary,
+                            qwr.reading_correct, qwr.meaning_correct, qwr.attempted_at
+                       FROM deck_words dw
+                       JOIN saved_words sw ON sw.id = dw.word_id
+                       LEFT JOIN quiz_word_results qwr
+                         ON qwr.user_email = ?
+                        AND qwr.deck_id = dw.deck_id
+                        AND qwr.word_id = dw.word_id
+                      WHERE dw.deck_id = ?
+                      ORDER BY dw.created_at ASC`,
+                )
+                .all(studentEmail, deckId)
+        );
+        const results = rows.map((r) => ({
+            ...r,
+            glossary: JSON.parse(r.glossary),
+        }));
+        return { results };
+    },
+);
+
 /** Get the student's most recent quiz score on every deck (batch, teacher-only). */
 fastify.get(
     "/yomitan/api/teacher/students/:email/quiz-scores/latest",
@@ -1284,7 +1374,7 @@ fastify.get(
            LEFT JOIN deck_words dw ON dw.deck_id = d.id
           WHERE d.user_email = ?
           GROUP BY d.id
-          ORDER BY d.name DESC`,
+          ORDER BY d.created_at DESC`,
                 )
                 .all(studentEmail)
         );

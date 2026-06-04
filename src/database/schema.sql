@@ -119,7 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_media_dictionary_path ON media(dictionary, path);
 -- Saved words (per-user vocabulary list)
 CREATE TABLE IF NOT EXISTS saved_words (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_email TEXT NOT NULL,
+    user_email TEXT NOT NULL REFERENCES users(email),
     term TEXT NOT NULL,
     reading TEXT NOT NULL,
     dictionary TEXT NOT NULL,
@@ -133,7 +133,7 @@ CREATE INDEX IF NOT EXISTS idx_saved_words_user ON saved_words(user_email);
 -- Decks (date-based collections of saved words)
 CREATE TABLE IF NOT EXISTS decks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_email TEXT NOT NULL,
+    user_email TEXT NOT NULL REFERENCES users(email),
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -155,7 +155,7 @@ CREATE INDEX IF NOT EXISTS idx_deck_words_word ON deck_words(word_id);
 -- Tags (user-created labels for decks)
 CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_email TEXT NOT NULL,
+    user_email TEXT NOT NULL REFERENCES users(email),
     name TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT '#e94560',
     created_at INTEGER NOT NULL DEFAULT (unixepoch())
@@ -178,7 +178,7 @@ CREATE INDEX IF NOT EXISTS idx_deck_tags_tag ON deck_tags(tag_id);
 -- Quiz scores (per-deck quiz attempt results)
 CREATE TABLE IF NOT EXISTS quiz_scores (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_email TEXT NOT NULL,
+    user_email TEXT NOT NULL REFERENCES users(email),
     deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
     reading_score INTEGER NOT NULL,
     meaning_score INTEGER NOT NULL,
@@ -188,6 +188,22 @@ CREATE TABLE IF NOT EXISTS quiz_scores (
 
 CREATE INDEX IF NOT EXISTS idx_quiz_scores_user ON quiz_scores(user_email);
 CREATE INDEX IF NOT EXISTS idx_quiz_scores_deck ON quiz_scores(user_email, deck_id);
+
+-- Per-word quiz outcomes for a student's *latest* attempt of a deck. Each row
+-- is upserted on submit, so history is intentionally not preserved — the table
+-- always reflects the most recent attempt only. Teachers query this to see
+-- which specific words the student got right/wrong.
+CREATE TABLE IF NOT EXISTS quiz_word_results (
+    user_email TEXT NOT NULL REFERENCES users(email),
+    deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    word_id INTEGER NOT NULL REFERENCES saved_words(id) ON DELETE CASCADE,
+    reading_correct INTEGER NOT NULL,  -- 0 or 1
+    meaning_correct INTEGER NOT NULL,  -- 0 or 1
+    attempted_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (user_email, deck_id, word_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_word_results_deck ON quiz_word_results(deck_id, user_email);
 
 -- Users (role + identity). Membership still gated by ALLOWED_EMAILS in code.
 CREATE TABLE IF NOT EXISTS users (
