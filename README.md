@@ -1,14 +1,64 @@
-Lightweight Web API for [Yomitan](https://github.com/yomidevs/yomitan) using Fastify & SQLite.
+# yomitan-api
 
-Current only exposes findTerms from Translator API.
+A small Fastify server that wraps [Yomitan](https://github.com/yomidevs/yomitan)'s
+dictionary lookup so it can be used outside the browser extension.
 
-Example:
-```
-➜  ~ curl http://localhost:3000/api/term/simple/縁は異なもの味なもの
-{"results":[{"term":"縁は異なもの味なもの","reading":"えんはいなものあじなもの","wordClasses":[],"score":0,"dictionary":"Jitendex.org [2026-01-04]","senses":[{"partsOfSpeech":["expressions (phrases, clauses, etc.)"],"glossary":["inscrutable and interesting are the ways people are brought together"],"examples":[]}]}],"originalTextLength":10}
+Built to power [yomitan-lite-frontend](https://github.com/ilaylow/yomitan-lite-frontend),
+but happy to be used standalone for anything that wants a Japanese dictionary HTTP API.
+
+## What it does
+
+- Imports Yomitan's term lookup modules from the upstream repo so any improvement
+  in Yomitan's parsing lands here just by bumping the version
+- Stores the unpacked Jitendex dictionary in SQLite via better-sqlite3
+- Adds a small layer of user features on top: saved words, decks, tags, quiz
+  scores, teacher / student linking, Google sign-in via JWT
+
+## Endpoints (the public ones)
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/yomitan/api/term/simple/:term` | Dictionary lookup, simplified output |
+| GET | `/yomitan/api/term/raw/:term` | Raw Yomitan output, full structure |
+| POST | `/yomitan/api/tokenize` | Sentence into kuromoji morphemes |
+| GET | `/yomitan/api/dictionaries` | Installed dictionaries |
+
+Everything under `/yomitan/api/words`, `/decks`, `/tags`, `/quiz`, `/teacher`,
+`/student` requires a JWT (issued by `POST /yomitan/auth/google`).
+
+## Running it locally
+
+```bash
+npm install
+node src/index.js
 ```
 
+The server listens on port 3000 by default. Required env vars (set them in
+`ecosystem.config.cjs` for pm2 or export them in your shell):
+
+- `GOOGLE_CLIENT_ID` — your Google OAuth client for ID token verification
+- `JWT_SECRET` — anything random and long
+- `OPENAI_API_KEY` (optional) — for the AI sentence generation endpoint
+
+Quick smoke test:
+
+```bash
+curl http://localhost:3000/yomitan/api/term/simple/犬
 ```
-➜  ~ curl http://localhost:3000/api/term/raw/縁は異なもの味なもの
-{"dictionaryEntries":[{"type":"term","isPrimary":true,"textProcessorRuleChainCandidates":[[]],"inflectionRuleChainCandidates":[{"source":"algorithm","inflectionRules":[]}],"score":0,"frequencyOrder":0,"dictionaryIndex":0,"dictionaryAlias":"Jitendex.org [2026-01-04]","sourceTermExactMatchCount":1,"matchPrimaryReading":false,"maxOriginalTextLength":10,"headwords":[{"index":0,"term":"縁は異なもの味なもの","reading":"えんはいなものあじなもの","sources":[{"originalText":"縁は異なもの味なもの","transformedText":"縁は異なもの味なもの","deinflectedText":"縁は異なもの味なもの","matchType":"exact","matchSource":"term","isPrimary":true}],"tags":[],"wordClasses":[]}],"definitions":[{"index":0,"headwordIndices":[0],"dictionary":"Jitendex.org [2026-01-04]","dictionaryIndex":0,"dictionaryAlias":"Jitendex.org [2026-01-04]","id":365846,"score":0,"frequencyOrder":0,"sequences":[2113730],"isPrimary":true,"tags":[],"entries":[{"type":"structured-content","content":[{"tag":"div","data":{"content":"sense-group"},"content":[{"tag":"span","title":"expressions (phrases, clauses, etc.)","data":{"class":"tag","code":"exp","content":"part-of-speech-info"},"content":"exp"},{"tag":"span","title":"proverb","data":{"class":"tag","code":"proverb","content":"misc-info"},"content":"proverb"},{"tag":"div","data":{"content":"sense"},"content":[{"tag":"ul","data":{"content":"glossary"},"content":{"tag":"li","content":"inscrutable and interesting are the ways people are brought together"}},{"tag":"div","data":{"content":"extra-info"},"content":{"tag":"div","content":{"tag":"div","data":{"class":"extra-box","content":"xref"},"content":[{"tag":"div","data":{"content":"xref-content"},"content":[{"tag":"span","lang":"en","data":{"content":"reference-label"},"content":"See also"},{"tag":"a","lang":"ja","href":"?query=%E7%B8%81%E3%81%AF%E7%95%B0%E3%81%AA%E3%82%82%E3%81%AE&wildcards=off&primary_reading=%E3%81%88%E3%82%93%E3%81%AF%E3%81%84%E3%81%AA%E3%82%82%E3%81%AE","content":[{"tag":"ruby","content":["縁",{"tag":"rt","content":"えん"}]},"は",{"tag":"ruby","content":["異",{"tag":"rt","content":"い"}]},"なもの"]}]},{"tag":"div","data":{"content":"xref-glossary"},"content":"inscrutable are the ways people are brought together; there is no telling how people are brought together; marriages are made in heaven"}]}}}]}]},{"tag":"div","data":{"content":"attribution"},"content":{"tag":"a","href":"https://www.edrdg.org/jmwsgi/entr.py?svc=jmdict&q=2113730","content":"JMdict"}}]}]}],"pronunciations":[],"frequencies":[]},{"type":"term","isPrimary":true,"textProcessorRuleChainCandidates":[[]],"inflectionRuleChainCandidates":[{"source":"algorithm","inflectionRules":[]}],"score":0,"frequencyOrder":0,"dictionaryIndex":0,"dictionaryAlias":"Jitendex.org [2026-01-04]","sourceTermExactMatchCount":1,"matchPrimaryReading":false,"maxOriginalTextLength":10,"headwords":[{"index":0,"term":"縁は異なもの味なもの","reading":"えんはいなものあじなもの","sources":[{"originalText":"縁は異なもの味なもの","transformedText":"縁は異なもの味なもの","deinflectedText":"縁は異なもの味なもの","matchType":"exact","matchSource":"term","isPrimary":true}],"tags":[],"wordClasses":[]}],"definitions":[{"index":0,"headwordIndices":[0],"dictionary":"Jitendex.org [2026-01-04]","dictionaryIndex":0,"dictionaryAlias":"Jitendex.org [2026-01-04]","id":367846,"score":0,"frequencyOrder":0,"sequences":[2113730],"isPrimary":true,"tags":[],"entries":[{"type":"structured-content","content":[{"tag":"div","data":{"content":"sense-group"},"content":[{"tag":"span","title":"expressions (phrases, clauses, etc.)","data":{"class":"tag","code":"exp","content":"part-of-speech-info"},"content":"exp"},{"tag":"span","title":"proverb","data":{"class":"tag","code":"proverb","content":"misc-info"},"content":"proverb"},{"tag":"div","data":{"content":"sense"},"content":[{"tag":"ul","data":{"content":"glossary"},"content":{"tag":"li","content":"inscrutable and interesting are the ways people are brought together"}},{"tag":"div","data":{"content":"extra-info"},"content":{"tag":"div","content":{"tag":"div","data":{"class":"extra-box","content":"xref"},"content":[{"tag":"div","data":{"content":"xref-content"},"content":[{"tag":"span","lang":"en","data":{"content":"reference-label"},"content":"See also"},{"tag":"a","lang":"ja","href":"?query=%E7%B8%81%E3%81%AF%E7%95%B0%E3%81%AA%E3%82%82%E3%81%AE&wildcards=off&primary_reading=%E3%81%88%E3%82%93%E3%81%AF%E3%81%84%E3%81%AA%E3%82%82%E3%81%AE","content":[{"tag":"ruby","content":["縁",{"tag":"rt","content":"えん"}]},"は",{"tag":"ruby","content":["異",{"tag":"rt","content":"い"}]},"なもの"]}]},{"tag":"div","data":{"content":"xref-glossary"},"content":"inscrutable are the ways people are brought together; there is no telling how people are brought together; marriages are made in heaven"}]}}}]}]},{"tag":"div","data":{"content":"attribution"},"content":{"tag":"a","href":"https://www.edrdg.org/jmwsgi/entr.py?svc=jmdict&q=2113730","content":"JMdict"}}]}]}],"pronunciations":[],"frequencies":[]}],"originalTextLength":10}
-```
+
+## Importing your own dictionary data
+
+The server expects a SQLite DB at `data/app.db` with Yomitan's parsed
+dictionary tables. The `cli/` directory has scripts to unpack a Jitendex zip
+into that DB. Run them once before starting the server.
+
+## Stack
+
+- Fastify 5
+- better-sqlite3
+- jsonwebtoken + google-auth-library
+- @sglkc/kuromoji for tokenization
+
+## License
+
+ISC
